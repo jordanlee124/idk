@@ -4,6 +4,7 @@ import { STAGES } from '../sim/content/stages';
 import { TRAIT_BLURB } from '../sim/content/names';
 import type { ChronicleEntry, Culture, StatPoint } from '../sim/types';
 import type { GroupView } from '../worker/protocol';
+import { ACTIVITY_COLOR, ACTIVITY_LABEL, type Person } from '../render/people';
 import { fmt, foodWord, stageLabel } from './format';
 import type { SimState } from './store';
 
@@ -150,6 +151,29 @@ export function WorldPanel({ state }: { state: SimState }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+export function PersonPanel({ person, group, sample, state, onClose }: { person: Person; group: GroupView; sample: number; state: SimState; onClose: () => void }) {
+  const culture = state.cultures[group.cultureId];
+  return (
+    <div className="person">
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <h3>
+          {person.name}
+          {person.founder ? <span className="badge">Founder</span> : null}
+        </h3>
+        <button onClick={onClose} aria-label="Close person" style={{ minHeight: 26, padding: '0 8px' }}>×</button>
+      </div>
+      <div className="muted">of the {culture?.name ?? 'people'}</div>
+      <div className="now">
+        <span className="dot" style={{ background: ACTIVITY_COLOR[person.activity] }} />
+        <b>{ACTIVITY_LABEL[person.activity]}</b>
+        {person.where ? <span className="muted"> · at {person.where}</span> : null}
+      </div>
+      <p className="why"><b>Why:</b> {person.why || 'Deciding what to do next.'}</p>
+      <p className="muted small">One of {sample} people shown for this group of {fmt(group.pop)}. Their choices come from the group's real food, crowding and know-how; the exact spot they pick is just for show.</p>
     </div>
   );
 }

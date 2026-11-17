@@ -4,7 +4,8 @@ import type { Overlay } from '../render/mapRenderer';
 import type { ChronicleEntry } from '../sim/types';
 import type { GroupView } from '../worker/protocol';
 import { MapCanvas, type MapHandle } from './MapCanvas';
-import { Chronicle, GroupPanel, WorldPanel } from './panels';
+import { Chronicle, GroupPanel, PersonPanel, WorldPanel } from './panels';
+import { ACTIVITY_COLOR, ACTIVITY_LABEL, type Activity } from '../render/people';
 import { fmt } from './format';
 import { useSim } from './store';
 
@@ -25,6 +26,7 @@ export function App() {
   const [seedInput, setSeedInput] = useState<string>('');
   const [hint, setHint] = useState(true);
   const [auto, setAuto] = useState(true);
+  const [personId, setPersonId] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const lastSpeed = useRef(10);
   const pendingSave = useRef<'store' | null>(null);
@@ -70,13 +72,14 @@ export function App() {
       else if (e.key === '1') setSpeed(1);
       else if (e.key === '2') setSpeed(10);
       else if (e.key === '3') setSpeed(100);
-      else if (e.key === 'Escape') setSelected(null);
+      else if (e.key === 'Escape') { setSelected(null); setPersonId(null); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [setSpeed, sim]);
 
   const group = s.groups.find((g) => g.id === selected) ?? null;
+  const personInfo = personId != null ? map.current?.personInfo(personId) ?? null : null;
   useEffect(() => { if (selected != null && !group && s.groups.length) setSelected(null); }, [group, selected, s.groups.length]);
 
   const onPick = useCallback((g: GroupView | null) => { setSelected(g ? g.id : null); setHint(false); }, []);
@@ -125,7 +128,7 @@ export function App() {
       </header>
       <main className="main">
         <section className="mapwrap">
-          <MapCanvas ref={map} sim={sim} overlay={overlay} selectedId={selected} onPick={onPick} onHover={onHover} onAutoFrame={setAuto} />
+          <MapCanvas ref={map} sim={sim} overlay={overlay} selectedId={selected} onPick={onPick} onHover={onHover} onAutoFrame={setAuto} onPickPerson={setPersonId} />
           <div className="overlay-bar" role="group" aria-label="Map view">
             {([['peoples', 'Peoples'], ['hunger', 'Hunger'], ['farming', 'Farming']] as [Overlay, string][]).map(([k, label]) => (
               <button key={k} className={overlay === k ? 'on' : ''} onClick={() => setOverlay(k)}>{label}</button>
@@ -135,23 +138,31 @@ export function App() {
           </div>
           {hint && s.year < 400 && (
             <div className="hint">
-              Two people begin in the green heartland. Watch them grow, split and spread. Click any people to follow its story, scroll to zoom, drag to pan.
+              Two people begin in the green heartland. Watch them grow, split and spread. The small dots are individual people: click one to see what they are doing and why. Click a larger marker to follow a whole people; scroll to zoom, drag to pan.
               <br /><button onClick={() => setHint(false)}>Got it</button>
             </div>
           )}
           {s.ended && <div className="banner"><b>Everyone is gone.</b> Pick a new seed to try again.</div>}
           {s.error && <div className="banner">Something went wrong: {s.error}</div>}
           {hover && <div className="hover-info">{hover}</div>}
-          <div className="legend" aria-hidden="true">
+          <details className="legend">
+            <summary>Legend</summary>
             <div><span className="sw band" /> Band (under 30)</div>
             <div><span className="sw" /> Tribe</div>
             <div><span className="sw village" /> Village (farms)</div>
             <div className="muted">Similar colours are kin</div>
-          </div>
+            <div className="muted" style={{ marginTop: 2 }}>People (click one):</div>
+            <div className="acts">
+              {(Object.keys(ACTIVITY_LABEL) as Activity[]).map((a) => (
+                <span key={a}><i className="dot" style={{ background: ACTIVITY_COLOR[a] }} />{ACTIVITY_LABEL[a]}</span>
+              ))}
+            </div>
+          </details>
         </section>
         <aside className="side">
           <div className="inspect">
-            {group ? <GroupPanel g={group} state={s} onClose={() => setSelected(null)} /> : <WorldPanel state={s} />}
+            {personInfo && <PersonPanel person={personInfo.person} group={personInfo.group} sample={personInfo.sample} state={s} onClose={() => setPersonId(null)} />}
+            {group ? <GroupPanel g={group} state={s} onClose={() => { setSelected(null); setPersonId(null); }} /> : <WorldPanel state={s} />}
           </div>
           <Chronicle entries={s.chronicle} onPick={onEntry} />
         </aside>

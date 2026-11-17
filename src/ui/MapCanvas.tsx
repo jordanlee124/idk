@@ -7,6 +7,7 @@ export interface MapHandle {
   flyTo(tile: number): void;
   fit(): void;
   setAutoFrame(on: boolean): void;
+  personInfo(id: number): ReturnType<MapRenderer['personInfo']>;
 }
 
 interface Props {
@@ -16,14 +17,15 @@ interface Props {
   onPick: (g: GroupView | null, tile: number | null) => void;
   onHover: (tile: number | null, g: GroupView | null) => void;
   onAutoFrame: (on: boolean) => void;
+  onPickPerson: (id: number | null) => void;
 }
 
-export const MapCanvas = forwardRef<MapHandle, Props>(function MapCanvas({ sim, overlay, selectedId, onPick, onHover, onAutoFrame }, ref) {
+export const MapCanvas = forwardRef<MapHandle, Props>(function MapCanvas({ sim, overlay, selectedId, onPick, onHover, onAutoFrame, onPickPerson }, ref) {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const view = useRef<MapRenderer | null>(null);
-  const picks = useRef({ onPick, onHover, onAutoFrame });
-  picks.current = { onPick, onHover, onAutoFrame };
+  const picks = useRef({ onPick, onHover, onAutoFrame, onPickPerson });
+  picks.current = { onPick, onHover, onAutoFrame, onPickPerson };
 
   useImperativeHandle(ref, () => ({
     flyTo: (tile) => view.current?.flyToTile(tile),
@@ -32,6 +34,7 @@ export const MapCanvas = forwardRef<MapHandle, Props>(function MapCanvas({ sim, 
       view.current?.fit();
     },
     setAutoFrame: (on) => view.current?.setAutoFrame(on),
+    personInfo: (id) => view.current?.personInfo(id) ?? null,
   }));
 
   useEffect(() => {
@@ -40,6 +43,7 @@ export const MapCanvas = forwardRef<MapHandle, Props>(function MapCanvas({ sim, 
     r.onPick = (g, t) => picks.current.onPick(g, t);
     r.onHover = (t, g) => picks.current.onHover(t, g);
     r.onAutoFrameChange = (on) => picks.current.onAutoFrame(on);
+    r.onPickPerson = (id) => picks.current.onPickPerson(id);
     const ro = new ResizeObserver(() => {
       const el = wrap.current!;
       r.resize(el.clientWidth, el.clientHeight);
@@ -55,6 +59,7 @@ export const MapCanvas = forwardRef<MapHandle, Props>(function MapCanvas({ sim, 
       r.cultures = s.cultures;
       r.droughts = s.droughts;
       r.year = s.year;
+      r.syncPeople();
       r.updateAutoFrame();
       r.requestDraw();
     };

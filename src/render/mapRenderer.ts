@@ -3,6 +3,7 @@ import { RIVER_COLOR, T, TERRAINS } from '../sim/content/terrain';
 import { ringN } from '../sim/econ';
 import { neighbours } from '../sim/hex';
 import type { GroupView } from '../worker/protocol';
+import { ACTIVITY_COLOR, ACTIVITY_LABEL, PeopleLayer, type Person } from './people';
 import type { Culture, Drought, WorldMap } from '../sim/types';
 
 export type Overlay = 'peoples' | 'hunger' | 'farming';
@@ -62,6 +63,10 @@ export class MapRenderer {
   private lastPinch = 0;
   /** While true the camera keeps the settled part of the world in frame; any manual pan or zoom turns it off. */
   autoFrame = true;
+  readonly people = new PeopleLayer();
+  selectedPersonId: number | null = null;
+  onPickPerson: (id: number | null) => void = () => {};
+  private lastFrameTime = performance.now();
   private lastFrameGroups = -1;
   onAutoFrameChange: (on: boolean) => void = () => {};
 
@@ -80,6 +85,13 @@ export class MapRenderer {
     this.bind();
     const loop = () => {
       this.raf = requestAnimationFrame(loop);
+      const now = performance.now();
+      const dt = Math.min(0.1, (now - this.lastFrameTime) / 1000);
+      this.lastFrameTime = now;
+      if (this.map && this.peopleVisible()) {
+        this.people.update(dt, this.map, S, PAD);
+        this.needsDraw = true;
+      }
       if (this.fly) {
         const f = this.fly;
         this.cam.x += (f.x - this.cam.x) * 0.18;
@@ -133,6 +145,22 @@ export class MapRenderer {
     this.fly = { x: c.x, y: c.y, zoom: Math.max(this.cam.zoom, zoom) };
   }
 
+  /** People are drawn when the map is zoomed in or the world is still small; otherwise only the selected group's. */
+  private peopleVisible(): boolean {
+    return this.groups.length <= 150 || this.cam.zoom >= 1.15 || this.selectedId != null;
+  }
+
+  syncPeople(): void {
+    if (this.map) this.people.sync(this.groups, this.map, this.cultures, S, PAD);
+  }
+
+  personInfo(id: number): { person: Person; group: GroupView; sample: number } | null {
+    const person = this.people.find(id);
+    if (!person) return null;
+    const group = this.groups.find((g) => g.id === person.gid);
+    return group ? { person, group, sample: this.people.of(group.id).length } : null;
+  }
+
   setAutoFrame(on: boolean): void {
     this.autoFrame = on;
     this.lastFrameGroups = -1;
@@ -170,6 +198,8 @@ export class MapRenderer {
 
   setMap(map: WorldMap): void {
     this.map = map;
+    this.people.clear();
+    this.selectedPersonId = null;
     this.mapW = PAD * 2 + S * SQ3 * (map.w + 0.5);
     this.mapH = PAD * 2 + S * 1.5 * map.h + S * 0.5;
     this.terrain = this.renderTerrain(map);
@@ -360,9 +390,18 @@ export class MapRenderer {
       this.pointers.delete(e.pointerId);
       this.lastPinch = 0;
       if (had && this.dragMoved < 6 && this.pointers.size === 0) {
-        const g = this.groupAt(e.offsetX, e.offsetY);
         const m = this.toMap(e.offsetX, e.offsetY);
-        this.onPick(g, this.tileAtMap(m.x, m.y));
+        const person = this.peopleVisible() ? this.people.hit(m.x, m.y, 9 / this.cam.zoom + 2) : null;
+        if (person) {
+          this.selectedPersonId = person.id;
+          this.onPickPerson(person.id);
+          this.onPick(this.groups.find((g) => g.id === person.gid) ?? null, null);
+        } else {
+          this.selectedPersonId = null;
+          this.onPickPerson(null);
+          this.onPick(this.groupAt(e.offsetX, e.offsetY), this.tileAtMap(m.x, m.y));
+        }
+        this.needsDraw = true;
       }
     };
     cv.addEventListener('pointerup', up);
@@ -515,6 +554,38 @@ export class MapRenderer {
         c.setLineDash([3, 2]);
         c.stroke();
         c.setLineDash([]);
+      }
+    }
+
+    // People: a sample of individuals walking their land, coloured by what they are doing.
+    if (this.peopleVisible()) {
+      const r = 2.7 / Math.sqrt(Math.max(0.8, zoom));
+      for (const p of this.people.all()) {
+        if (!this.peopleVisible()) break;
+        c.beginPath();
+        c.arc(p.x, p.y, r, 0, Math.PI * 2);
+        c.fillStyle = ACTIVITY_COLOR[p.activity];
+        c.fill();
+        c.lineWidth = 0.9 / Math.sqrt(Math.max(0.8, zoom));
+        c.strokeStyle = 'rgba(0,0,0,0.75)';
+        c.stroke();
+      }
+      const sp = this.selectedPersonId != null ? this.people.find(this.selectedPersonId) : null;
+      if (sp) {
+        c.strokeStyle = '#fff';
+        c.lineWidth = 1.8 / Math.sqrt(zoom);
+        c.beginPath();
+        c.arc(sp.x, sp.y, r + 3 / Math.sqrt(zoom), 0, Math.PI * 2);
+        c.stroke();
+        c.font = `600 ${12 / zoom}px system-ui, sans-serif`;
+        c.textAlign = 'center';
+        c.lineJoin = 'round';
+        const label = `${sp.name}: ${ACTIVITY_LABEL[sp.activity]}`;
+        c.lineWidth = 3.5 / zoom;
+        c.strokeStyle = 'rgba(0,0,0,0.75)';
+        c.strokeText(label, sp.x, sp.y - r - 8 / zoom);
+        c.fillStyle = '#fff';
+        c.fillText(label, sp.x, sp.y - r - 8 / zoom);
       }
     }
 
