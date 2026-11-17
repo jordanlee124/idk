@@ -11,17 +11,8 @@ import { useSim } from './store';
 const SAVE_KEY = 'chronicle-of-peoples-save';
 
 function seedFromHash(): number {
-  const m = /seed=(\d+)/.exec(window.location.hash);
+  const m = /seed[=-](\d+)/.exec(window.location.hash);
   return m ? Number(m[1]) >>> 0 : Math.floor(Math.random() * 9000) + 1000;
-}
-
-function download(name: string, text: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function App() {
@@ -36,7 +27,7 @@ export function App() {
   const [auto, setAuto] = useState(true);
   const [note, setNote] = useState('');
   const lastSpeed = useRef(10);
-  const pendingSave = useRef<'store' | 'file' | null>(null);
+  const pendingSave = useRef<'store' | null>(null);
 
   useEffect(() => {
     sim.send({ t: 'speed', yps: 10 });
@@ -45,9 +36,9 @@ export function App() {
         if (pendingSave.current === 'store') {
           localStorage.setItem(SAVE_KEY, json);
           setNote('Saved in this browser.');
-        } else download(`history-seed-${sim.state.current.seed}-year-${sim.state.current.year}.json`, json);
+        }
       } catch {
-        setNote('Could not save here. Use Export instead.');
+        setNote('Could not save in this browser.');
       }
       pendingSave.current = null;
     };
@@ -57,7 +48,7 @@ export function App() {
   useEffect(() => {
     if (s.seed) {
       setSeedInput(String(s.seed));
-      try { history.replaceState(null, '', `#seed=${s.seed}`); } catch { /* sandboxed */ }
+      try { history.replaceState(null, '', `#seed-${s.seed}`); } catch { /* sandboxed */ }
     }
   }, [s.seed]);
 
@@ -129,15 +120,6 @@ export function App() {
           <button onClick={() => {
             try { const j = localStorage.getItem(SAVE_KEY); if (j) { setSelected(null); sim.send({ t: 'load', json: j }); sim.send({ t: 'speed', yps: 0 }); setNote('Loaded, paused.'); } else setNote('Nothing saved yet.'); } catch { setNote('Could not read saved game.'); }
           }}>Load</button>
-          <button onClick={() => { pendingSave.current = 'file'; sim.send({ t: 'save' }); }} title="Download the history as a file">Export</button>
-          <label style={{ display: 'inline-flex' }}>
-            <span role="button" tabIndex={0} style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '5px 10px', fontSize: 13, cursor: 'pointer', background: 'var(--panel)', minHeight: 34, display: 'inline-flex', alignItems: 'center' }}>Import</span>
-            <input type="file" accept="application/json,.json" hidden onChange={async (e) => {
-              const f = e.target.files?.[0];
-              if (f) { setSelected(null); sim.send({ t: 'load', json: await f.text() }); sim.send({ t: 'speed', yps: 0 }); setNote('Imported, paused.'); }
-              e.target.value = '';
-            }} />
-          </label>
         </div>
         {note && <span className="muted" role="status">{note}</span>}
       </header>

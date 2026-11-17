@@ -14,7 +14,7 @@ npm test           # unit tests, golden seed test, 5-seed gate
 npm run balance 1 2 3   # headless timeline for seeds, to tune numbers
 ```
 
-Share a world with `#seed=4471` on the end of the address.
+Share a world with `#seed-4471` on the end of the address.
 
 ## Layout
 
