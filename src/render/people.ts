@@ -6,9 +6,10 @@ import { TERRAINS } from '../sim/content/terrain';
 import { ringN } from '../sim/econ';
 import { makeWord, capitalise } from '../sim/names';
 import type { Culture, WorldMap } from '../sim/types';
+import { KIND_WORD, stageName, type House, type SettlementLayer } from './settlement';
 import type { GroupView } from '../worker/protocol';
 
-export type Activity = 'forage' | 'hunt' | 'fish' | 'farm' | 'rest' | 'search' | 'migrate' | 'split';
+export type Activity = 'forage' | 'hunt' | 'fish' | 'farm' | 'rest' | 'search' | 'migrate' | 'split' | 'build';
 
 export const ACTIVITY_LABEL: Record<Activity, string> = {
   forage: 'Foraging',
@@ -19,6 +20,7 @@ export const ACTIVITY_LABEL: Record<Activity, string> = {
   search: 'Searching for food',
   migrate: 'Moving camp',
   split: 'Leaving to found a new camp',
+  build: 'Building',
 };
 
 export const ACTIVITY_COLOR: Record<Activity, string> = {
@@ -30,6 +32,7 @@ export const ACTIVITY_COLOR: Record<Activity, string> = {
   search: '#ff9a3c',
   migrate: '#c58cf0',
   split: '#ff6fb1',
+  build: '#b07a4a',
 };
 
 export interface Person {
@@ -48,6 +51,8 @@ export interface Person {
   where: string;
   founder: boolean;
   arrived: boolean;
+  job: { phase: 'fetch' | 'carry'; houseId: number } | null;
+  carrying: boolean;
 }
 
 interface Prev {
@@ -124,6 +129,8 @@ export function explain(a: Activity, g: GroupView, extra?: string): string {
       return extra ?? 'Following the group to better land.';
     case 'split':
       return extra ?? 'Leaving with a new band to found a camp of its own.';
+    case 'build':
+      return extra ?? 'Building shelter for the group.';
   }
 }
 
@@ -132,6 +139,7 @@ export class PeopleLayer {
   private prev = new Map<number, Prev>();
   private nextId = 1;
   private groupsById = new Map<number, GroupView>();
+  settle: SettlementLayer | null = null;
 
   clear(): void {
     this.people.clear();
@@ -166,7 +174,7 @@ export class PeopleLayer {
     const rnd = mulberry(id * 7919 + g.id);
     const culture = cultures[g.cultureId];
     const name = founder && idx === 0 && g.leaderName ? g.leaderName : culture ? capitalise(makeWord({ rng: id * 31 + g.id }, culture, 2)) : `Person ${id}`;
-    return { id, gid: g.id, name, x: at.x + (rnd() - 0.5) * S * 0.5, y: at.y + (rnd() - 0.5) * S * 0.5, tx: at.x, ty: at.y, activity: 'rest', why: '', wait: rnd() * 1.5, where: '', founder, arrived: true };
+    return { id, gid: g.id, name, x: at.x + (rnd() - 0.5) * S * 0.5, y: at.y + (rnd() - 0.5) * S * 0.5, tx: at.x, ty: at.y, activity: 'rest', why: '', wait: rnd() * 1.5, where: '', founder, arrived: true, job: null, carrying: false };
   }
 
   /** Reconcile the sample people with the latest groups. Called whenever a snapshot arrives. */
@@ -206,11 +214,15 @@ export class PeopleLayer {
         }
       }
       while (list.length < want) list.push(this.spawn(g, cultures, S, centre, false, list.length));
-      if (list.length > want) list.length = want;
+      if (list.length > want) {
+        for (const gone of list.slice(want)) this.release(gone);
+        list.length = want;
+      }
 
       if (prev && prev.tile !== g.tile) {
         const why = `Following the group to new ground. The old camp fed about ${Math.round(prev.capacity)} people and ${Math.round(prev.pop)} lived on it (food ${f2(prev.foodRatio)}×), and this spot looked richer.`;
         for (const p of list) {
+          this.release(p);
           p.activity = 'migrate';
           p.arrived = false;
           p.tx = centre.x + (((p.id * 37) % 11) - 5) * S * 0.06;
@@ -224,11 +236,99 @@ export class PeopleLayer {
     }
   }
 
+  private release(p: Person): void {
+    if (p.job) {
+      const h = this.settle?.find(p.job.houseId);
+      if (h) h.builders = Math.max(0, h.builders - 1);
+    }
+    p.job = null;
+    p.carrying = false;
+  }
+
+  private resourceTile(map: WorldMap, g: GroupView, kind: House['kind'], rnd: () => number): number {
+    const tiles = ringN(map, 2)[g.tile].filter((t) => TERRAINS[map.terrain[t]].habitable);
+    const prefer = tiles.filter((t) => (kind === 'house' ? map.river[t] || map.terrain[t] === 2 || map.terrain[t] === 1 : kind === 'hut' ? map.terrain[t] === 3 || map.terrain[t] === 1 : map.terrain[t] === 3 || map.terrain[t] === 4));
+    const pool = prefer.length ? prefer : tiles.length ? tiles : [g.tile];
+    return pool[Math.floor(rnd() * pool.length)];
+  }
+
+  private buildWhy(g: GroupView, h: House, phase: 'fetch' | 'carry'): string {
+    const n = this.settle?.total(g.id) ?? 1;
+    const material = h.kind === 'house' ? (phase === 'fetch' ? 'clay and reeds for mud bricks' : 'a load of mud bricks') : h.kind === 'hut' ? (phase === 'fetch' ? 'timber and thatch' : 'timber and thatch') : phase === 'fetch' ? 'poles and hides' : 'poles and hides';
+    const step = phase === 'fetch' ? `Heading out for ${material}` : `Carrying ${material} back to the site`;
+    const reason =
+      g.stage === 'village'
+        ? `The village has ${Math.round(g.pop)} people on its fields and needs about ${n} homes for them.`
+        : h.kind === 'hut'
+          ? `The group knows Shelter and has ${Math.round(g.pop)} people to keep warm and dry.`
+          : `The camp has ${Math.round(g.pop)} people and no shelter craft yet, so they put up tents.`;
+    return `${step}. Building ${KIND_WORD[h.kind]} ${h.slot + 1} of ${n}, now ${stageName(h.progress)}. ${reason}`;
+  }
+
+  private startFetch(p: Person, g: GroupView, h: House, map: WorldMap, S: number, pad: number, rnd: () => number): void {
+    const t = this.resourceTile(map, g, h.kind, rnd);
+    const c = this.centre(map, t, S, pad);
+    if (!p.job) h.builders++;
+    p.job = { phase: 'fetch', houseId: h.id };
+    p.carrying = false;
+    p.activity = 'build';
+    p.tx = c.x + (rnd() - 0.5) * S * 0.8;
+    p.ty = c.y + (rnd() - 0.5) * S * 0.8;
+    p.where = t === g.tile ? 'camp' : `the ${TERRAINS[map.terrain[t]].phrase}`;
+    p.why = this.buildWhy(g, h, 'fetch');
+    p.arrived = false;
+  }
+
+  /** Called when a builder reaches the end of a leg: pick up, drop off, or look for the next job. */
+  private advanceJob(p: Person, g: GroupView, map: WorldMap, S: number, pad: number): void {
+    const job = p.job!;
+    const h = this.settle?.find(job.houseId) ?? null;
+    if (!h) {
+      p.job = null;
+      p.carrying = false;
+      p.activity = 'rest';
+      p.wait = 0.5;
+      return;
+    }
+    const rnd = mulberry((p.id * 40503 + Math.floor(performance.now() / 200)) >>> 0);
+    if (job.phase === 'fetch') {
+      job.phase = 'carry';
+      p.carrying = true;
+      p.tx = h.x + (rnd() - 0.5) * 6;
+      p.ty = h.y + 4 + rnd() * 2;
+      p.where = 'the building site';
+      p.why = this.buildWhy(g, h, 'carry');
+      p.arrived = false;
+      return;
+    }
+    // Dropped off a load.
+    this.settle!.deliver(h.id, h.kind === 'tent' ? 0.34 : h.kind === 'hut' ? 0.16 : 0.1);
+    p.carrying = false;
+    if (h.progress < 1 && g.foodRatio >= 0.85) {
+      this.startFetch(p, g, h, map, S, pad, rnd);
+      return;
+    }
+    h.builders = Math.max(0, h.builders - 1);
+    p.job = null;
+    p.activity = 'rest';
+    p.where = 'camp';
+    p.why = h.progress >= 1 ? `Finished ${KIND_WORD[h.kind]} ${h.slot + 1}. Taking a moment before the next task.` : 'Food is short, so building waits.';
+    p.wait = 1.2;
+    p.arrived = true;
+  }
+
   private decide(p: Person, g: GroupView, map: WorldMap, S: number, pad: number): void {
     const rnd = mulberry((p.id * 2654435761 + (Math.floor(performance.now() / 250) | 0)) >>> 0);
     const tiles = ringN(map, 2)[g.tile];
     const land = (i: number) => TERRAINS[map.terrain[i]].habitable;
     const waterTiles = tiles.filter((t) => land(t) && (map.coast[t] || map.river[t]));
+    if (this.settle && g.foodRatio >= 0.9 && p.activity !== 'build') {
+      const site = this.settle.openSite(g.id);
+      if (site && rnd() < 0.65) {
+        this.startFetch(p, g, site, map, S, pad, rnd);
+        return;
+      }
+    }
     const act = pickActivity(g, rnd(), waterTiles.length > 0);
     let pool: number[];
     switch (act) {
@@ -276,6 +376,10 @@ export class PeopleLayer {
           p.x += dx * k;
           p.y += dy * k;
           p.arrived = false;
+          continue;
+        }
+        if (p.job) {
+          this.advanceJob(p, g, map, S, pad);
           continue;
         }
         if (!p.arrived) {

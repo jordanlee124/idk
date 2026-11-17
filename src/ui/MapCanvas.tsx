@@ -59,6 +59,7 @@ export const MapCanvas = forwardRef<MapHandle, Props>(function MapCanvas({ sim, 
       r.cultures = s.cultures;
       r.droughts = s.droughts;
       r.year = s.year;
+      r.speed = s.seeking ? 1000 : s.yps;
       r.syncPeople();
       r.updateAutoFrame();
       r.requestDraw();

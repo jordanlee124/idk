@@ -3,6 +3,7 @@ import { RIVER_COLOR, T, TERRAINS } from '../sim/content/terrain';
 import { ringN } from '../sim/econ';
 import { neighbours } from '../sim/hex';
 import type { GroupView } from '../worker/protocol';
+import { SettlementLayer, drawField, drawHouse, drawRuin } from './settlement';
 import { ACTIVITY_COLOR, ACTIVITY_LABEL, PeopleLayer, type Person } from './people';
 import type { Culture, Drought, WorldMap } from '../sim/types';
 
@@ -64,6 +65,9 @@ export class MapRenderer {
   /** While true the camera keeps the settled part of the world in frame; any manual pan or zoom turns it off. */
   autoFrame = true;
   readonly people = new PeopleLayer();
+  readonly settle = new SettlementLayer();
+  /** Simulation speed in years per second, so building can switch from staged to instant when it is too fast to watch. */
+  speed = 10;
   selectedPersonId: number | null = null;
   onPickPerson: (id: number | null) => void = () => {};
   private lastFrameTime = performance.now();
@@ -82,6 +86,7 @@ export class MapRenderer {
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
+    this.people.settle = this.settle;
     this.bind();
     const loop = () => {
       this.raf = requestAnimationFrame(loop);
@@ -92,6 +97,8 @@ export class MapRenderer {
         this.people.update(dt, this.map, S, PAD);
         this.needsDraw = true;
       }
+      this.settle.update(dt);
+      if (this.settle.ruins.length) this.needsDraw = true;
       if (this.fly) {
         const f = this.fly;
         this.cam.x += (f.x - this.cam.x) * 0.18;
@@ -150,8 +157,29 @@ export class MapRenderer {
     return this.groups.length <= 150 || this.cam.zoom >= 1.15 || this.selectedId != null;
   }
 
+  /** Buildings go up in stages only while there is time to watch them; at speed or wide zoom they just appear. */
+  private animateBuilding(): boolean {
+    return this.speed <= 30 && this.peopleVisible();
+  }
+
+  private housesVisible(): boolean {
+    return this.cam.zoom >= 1.1;
+  }
+
   syncPeople(): void {
-    if (this.map) this.people.sync(this.groups, this.map, this.cultures, S, PAD);
+    const map = this.map;
+    if (!map) return;
+    this.settle.sync(
+      this.groups,
+      (t) => centreOf(t, map.w),
+      S,
+      (x, y) => {
+        const t = this.tileAtMap(x, y);
+        return t != null && TERRAINS[map.terrain[t]].habitable;
+      },
+      !this.animateBuilding(),
+    );
+    this.people.sync(this.groups, map, this.cultures, S, PAD);
   }
 
   personInfo(id: number): { person: Person; group: GroupView; sample: number } | null {
@@ -199,6 +227,7 @@ export class MapRenderer {
   setMap(map: WorldMap): void {
     this.map = map;
     this.people.clear();
+    this.settle.clear();
     this.selectedPersonId = null;
     this.mapW = PAD * 2 + S * SQ3 * (map.w + 0.5);
     this.mapH = PAD * 2 + S * 1.5 * map.h + S * 0.5;
@@ -509,11 +538,33 @@ export class MapRenderer {
       }
     }
 
-    // Markers.
     const zoom = this.cam.zoom;
+    const showHouses = this.housesVisible();
+    if (showHouses) {
+      // Fields ring a village; they grow with it.
+      for (const g of this.groups) {
+        if (g.stage !== 'village') continue;
+        const houses = this.settle.of(g.id).filter((h) => h.progress >= 0.5).length;
+        const n = Math.min(8, Math.max(1, Math.round(houses / 4)));
+        const cc = centreOf(g.tile, map.w);
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2 + g.id * 1.3;
+          const rr = S * (1.15 + (i % 2) * 0.28);
+          drawField(c, cc.x + Math.cos(a) * rr, cc.y + Math.sin(a) * rr * 0.9, a + Math.PI / 2, (g.id + Math.floor(this.year / 6) + i) % 2, zoom);
+        }
+      }
+      for (const r of this.settle.ruins) drawRuin(c, r, zoom);
+      const hs = this.settle.all();
+      hs.sort((a, b) => a.y - b.y);
+      const t = performance.now();
+      for (const h of hs) drawHouse(c, h, zoom, t);
+    }
+
+    // Markers.
+    c.globalAlpha = showHouses ? 0.4 : 1;
     for (const g of this.groups) {
       const p = centreOf(g.tile, map.w);
-      const r = this.markerRadius(g);
+      const r = this.markerRadius(g) * (showHouses ? 0.7 : 1);
       const culture = this.cultures[g.cultureId];
       const hue = culture ? culture.hue : 0;
       const young = this.year - g.founded;
@@ -557,6 +608,8 @@ export class MapRenderer {
       }
     }
 
+    c.globalAlpha = 1;
+
     // People: a sample of individuals walking their land, coloured by what they are doing.
     if (this.peopleVisible()) {
       const r = 2.7 / Math.sqrt(Math.max(0.8, zoom));
@@ -569,6 +622,11 @@ export class MapRenderer {
         c.lineWidth = 0.9 / Math.sqrt(Math.max(0.8, zoom));
         c.strokeStyle = 'rgba(0,0,0,0.75)';
         c.stroke();
+        if (p.carrying) {
+          c.fillStyle = '#c98f5e';
+          c.fillRect(p.x - r * 0.5, p.y - r * 2.4, r, r * 0.9);
+          c.strokeRect(p.x - r * 0.5, p.y - r * 2.4, r, r * 0.9);
+        }
       }
       const sp = this.selectedPersonId != null ? this.people.find(this.selectedPersonId) : null;
       if (sp) {
