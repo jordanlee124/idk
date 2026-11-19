@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#10140f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Duskforge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: full-bleed map; a slim stock bar on top, the build tray at the thumb. */
+:root {
+  --bg: #10140f;
+  --panel: rgba(20, 22, 26, 0.94);
+  --panel-solid: #17191d;
+  --line: #2c3036;
+  --fg: #ece8e1;
+  --muted: #a39d93;
+  --ember: #f0a64b;
+  --danger: #ff5d5d;
+  --good: #9ccf5a;
+  --font-display: "Chakra Petch", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px;
+  overflow: hidden; overscroll-behavior: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+#app { position: relative; height: 100%; display: flex; flex-direction: column; }
+
+/* Stock bar */
+header {
+  display: grid; gap: 5px; background: var(--panel-solid); border-bottom: 1px solid var(--line);
+  padding-top: max(6px, env(safe-area-inset-top, 0px)); padding-bottom: 6px;
+  padding-left: max(8px, env(safe-area-inset-left, 0px)); padding-right: max(8px, env(safe-area-inset-right, 0px));
+}
+.row1 { display: flex; align-items: center; gap: 8px; }
+.res { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+.chip { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 3px 4px; border-radius: 4px; background: #202328; min-width: 0; }
+.res .chip { display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto; column-gap: 5px; row-gap: 0; justify-content: center; padding: 3px 2px 4px; }
+.res .chip i { grid-row: 1; align-self: center; }
+.res .chip b { grid-row: 1; line-height: 1.1; }
+.res .chip small { grid-column: 1 / span 2; text-align: center; line-height: 1; }
+.chip i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.chip b { font-family: var(--font-display); font-size: 15px; font-variant-numeric: tabular-nums; }
+.chip small { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip.low { box-shadow: inset 0 0 0 1px var(--danger); }
+#c-pop { background: transparent; padding: 0; justify-content: flex-start; }
+#c-pop b { color: var(--ember); font-size: 20px; }
+#c-pop small { font-size: 12px; }
+#raid { margin-left: auto; font-family: var(--font-display); font-size: 13px; letter-spacing: 0.04em; color: var(--muted); font-variant-numeric: tabular-nums; }
+#raid.hot { color: var(--danger); }
+#menuBtn { flex: none; width: 36px; height: 30px; border-radius: 4px; border: 1px solid var(--line); background: #202328; color: var(--fg); font-size: 16px; }
+
+/* Map */
+main { flex: 1; min-height: 0; position: relative; }
+#board { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+#toast {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%); width: max-content; max-width: 88%;
+  padding: 7px 12px; border-radius: 4px; background: var(--panel); border: 1px solid var(--ember);
+  font-size: 13px; text-align: center; pointer-events: none;
+}
+#rotate {
+  position: absolute; right: max(12px, env(safe-area-inset-right, 0px)); bottom: 12px; width: 56px; height: 56px; border-radius: 50%;
+  border: 1px solid var(--ember); background: var(--panel); color: var(--ember); display: grid; place-items: center; gap: 0;
+  font-family: var(--font-display); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase;
+}
+#rotate .arrow { font-size: 24px; line-height: 1; margin-top: 4px; }
+#panel {
+  position: absolute; left: max(8px, env(safe-area-inset-left, 0px)); right: max(8px, env(safe-area-inset-right, 0px)); bottom: 8px;
+  max-width: 420px; margin: 0 auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px;
+  display: grid; gap: 8px;
+}
+#pTitle { margin: 0; font-family: var(--font-display); font-size: 18px; font-weight: 700; }
+#pRows { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+#pRows dt { color: var(--muted); }
+#pRows dd { margin: 0; text-align: right; }
+.pBtns { display: flex; gap: 8px; }
+.pBtns button { flex: 1; min-height: 40px; border-radius: 6px; border: 1px solid var(--line); background: #24272d; color: var(--fg); font: 600 14px var(--font-body); }
+#pRemove { color: #ff8a8a; }
+
+/* Build tray */
+footer {
+  background: var(--panel-solid); border-top: 1px solid var(--line);
+  padding-bottom: max(6px, env(safe-area-inset-bottom, 0px));
+}
+#info { font-size: 12.5px; line-height: 1.35; color: var(--muted); padding: 7px max(10px, env(safe-area-inset-left, 0px)) 4px; min-height: 2.9em; }
+#info b { color: var(--fg); }
+#tools {
+  display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity;
+  padding: 2px max(8px, env(safe-area-inset-left, 0px)) 4px;
+}
+#tools::-webkit-scrollbar { display: none; }
+#tools button {
+  flex: none; width: 62px; height: 64px; border-radius: 8px; border: 1px solid var(--line); background: #202328; color: var(--fg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0; scroll-snap-align: start;
+}
+#tools canvas { width: 30px; height: 30px; }
+#tools .n { font-family: var(--font-display); font-weight: 600; font-size: 11.5px; }
+#tools button.on { border-color: var(--ember); background: #2c2a24; box-shadow: inset 0 0 0 1px var(--ember); }
+#tools button.locked { opacity: 0.35; }
+button { cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+/* Overlays */
+.overlay {
+  position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; background: rgba(6, 8, 6, 0.8);
+  padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));
+}
+.card { width: 100%; max-width: 400px; max-height: 92vh; overflow-y: auto; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 10px; padding: 22px 20px 18px; display: grid; gap: 12px; }
+.kicker { font-family: var(--font-display); font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ember); }
+.card h1 { margin: 0; font-family: var(--font-display); font-size: 32px; line-height: 1; }
+.card p { margin: 0; line-height: 1.5; color: #d6d0c6; }
+.card ul { margin: 0; padding-left: 18px; display: grid; gap: 7px; line-height: 1.45; color: #d6d0c6; }
+.card b { color: var(--fg); }
+.big { min-height: 50px; border: 0; border-radius: 6px; background: var(--ember); color: #1a1008; font: 700 16px var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; }
+.ghost { min-height: 46px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--fg); font: 600 14px var(--font-body); }
+.danger { color: var(--danger); border-color: var(--danger); }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="row1">
+      <div class="chip" id="c-pop"><b id="pop">0</b><small>people · <span id="free">0 free</span></small></div>
+      <div id="raid">Raid in 6:00</div>
+      <button id="menuBtn" aria-label="Menu">≡</button>
+    </div>
+    <div class="res">
+      <div class="chip" id="c-food"><i style="background:#9ccf5a"></i><b id="food">0</b><small>food</small></div>
+      <div class="chip"><i style="background:#a8743f"></i><b id="wood">0</b><small>wood</small></div>
+      <div class="chip"><i style="background:#cfd8e2"></i><b id="plate">0</b><small>plate</small></div>
+      <div class="chip"><i style="background:#e0a83a"></i><b id="tools2">0</b><small>tools</small></div>
+      <div class="chip"><i style="background:#ffd25e"></i><b id="ammo">0</b><small>ammo</small></div>
+    </div>
+  </header>
+
+  <main>
+    <canvas id="board"></canvas>
+    <div id="toast" hidden></div>
+    <button id="rotate" hidden aria-label="Rotate"><span class="arrow">→</span>turn</button>
+    <div id="panel" hidden>
+      <h2 id="pTitle"></h2>
+      <dl id="pRows"></dl>
+      <div class="pBtns">
+        <button id="pRotate">Rotate</button>
+        <button id="pRemove">Remove</button>
+        <button id="pClose">Close</button>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div id="info"></div>
+    <div id="tools"></div>
+  </footer>
+</div>
+
+<div class="overlay" id="intro">
+  <div class="card">
+    <div class="kicker">Colony · endless</div>
+    <h1>Duskforge</h1>
+    <p>You landed with a town hall, three huts and a little stock. Build a factory that keeps the town fed, and the town gives you the workers to build more.</p>
+    <ul>
+      <li><b>Pick a tool</b> in the tray, then tap the map to build. <b>Drag</b> to lay belts or walls.</li>
+      <li><b>Two fingers</b> pan and pinch-zoom at any time. The <b>Move</b> tool pans with one finger and taps open details.</li>
+      <li>Goods enter the town at the <b>hall</b> or a <b>Depot</b>. Houses eat food, then want wood, then tools.</li>
+      <li>Raiders come every few minutes. Turrets fire ammo from the town stock.</li>
+    </ul>
+    <button class="big">Start building</button>
+  </div>
+</div>
+
+<div class="overlay" id="menu" hidden>
+  <div class="card">
+    <div class="kicker">Paused menu</div>
+    <h1>Duskforge</h1>
+    <p>Your colony saves itself every few seconds on this device.</p>
+    <button class="big" id="mResume">Resume</button>
+    <button class="ghost" id="mHome">Jump to town hall</button>
+    <button class="ghost danger" id="mNew">Start a new colony</button>
+    <div id="confirmNew" hidden>
+      <p style="margin-bottom:8px">This deletes the current colony.</p>
+      <button class="ghost danger" id="mNewYes" style="width:100%">Yes, start over</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/world.js"></script>
+<script src="js/town.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/raids.js"></script>
+<script src="js/render.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
