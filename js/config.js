@@ -1,47 +1,72 @@
-// Duskforge: all tunable numbers live here so balancing never means hunting through logic.
+// Duskforge: every tunable number lives here.
 window.DF = window.DF || {};
 
 DF.CONFIG = {
-  cols: 9,
-  rows: 12,
-  wallRow: 4, // rows above this are the wasteland, rows below are the base
+  tile: 32, // base tile size in px at zoom 1
+  zoomMin: 0.45,
+  zoomMax: 2.2,
+  beltSpeed: 2.0, // tiles per second
+  townTick: 10, // seconds between town consumption checks
+  saveEvery: 10, // seconds between autosaves
+  saveKey: 'duskforge-save-v2',
 
-  // Ore deposits in the base, as [x, y]. Mines can only sit on these.
-  deposits: [[1, 6], [7, 6], [4, 8], [1, 10], [7, 10]],
+  start: { plate: 70, wood: 50, food: 30, tools: 0, ammo: 20, iron: 0, coal: 0 },
 
-  start: { plates: 50, ammo: 12, fuel: 40, food: 10 },
-  wallMaxHp: 150,
-  wallRepairAtDawn: 40,
-  colonists: 6, // each eats 1 food at dawn
-  heaterFuelPerNight: 3, // the outpost burns this much fuel every night no matter what
-  dayLength: [75, 50, 50, 50, 50], // seconds of daylight before each night
-  totalNights: 5,
+  // Item kinds and how they look
+  items: {
+    iron:  { name: 'Iron ore', color: '#7f93b0' },
+    coal:  { name: 'Coal',     color: '#2b2b30' },
+    wood:  { name: 'Wood',     color: '#a8743f' },
+    food:  { name: 'Food',     color: '#9ccf5a' },
+    plate: { name: 'Plates',   color: '#cfd8e2' },
+    tools: { name: 'Tools',    color: '#e0a83a' },
+    ammo:  { name: 'Ammo',     color: '#ffd25e' },
+  },
 
-  beltSpeed: 2.2, // cells per second
-
+  // Buildings. cost is taken from the town stock. workers are people the building needs.
+  // unlock is the population needed before it appears in the build bar.
   buildings: {
-    belt:     { name: 'Belt',     cost: 1 },
-    mine:     { name: 'Mine',     cost: 6,  period: 3.0 },
-    smelter:  { name: 'Smelter',  cost: 8,  period: 1.8, fuelPerCraft: 0.5, inMax: 3, outMax: 2 },
-    workshop: { name: 'Workshop', cost: 10, period: 2.0, ammoPerPlate: 2, inMax: 3, outMax: 4 },
-    gun:      { name: 'Gun',      cost: 8,  range: 3.6, rate: 2.5, dmg: 4, ammo: 1, unlockDay: 1 },
-    mortar:   { name: 'Mortar',   cost: 20, range: 5.2, rate: 0.55, dmg: 16, splash: 1.1, ammo: 3, flight: 0.7, unlockDay: 2 },
+    belt:     { name: 'Belt',     cost: { plate: 1 }, workers: 0, unlock: 0, hp: 20, desc: 'Moves items. Drag to lay a line.' },
+    splitter: { name: 'Splitter', cost: { plate: 4 }, workers: 0, unlock: 0, hp: 20, desc: 'Sends items forward, left and right in turn.' },
+    lumber:   { name: 'Lumber',   cost: { wood: 5 },  workers: 1, unlock: 0, hp: 40, period: 4.5, out: 'wood', on: 'forest', desc: 'Cuts wood. Place on forest.' },
+    farm:     { name: 'Farm',     cost: { wood: 6 },  workers: 1, unlock: 0, hp: 40, period: 5.0, out: 'food', on: 'grass', desc: 'Grows food on open grass.' },
+    mine:     { name: 'Mine',     cost: { plate: 8, wood: 4 }, workers: 1, unlock: 0, hp: 50, period: 2.5, on: 'ore', desc: 'Digs iron or coal. Place on a deposit.' },
+    smelter:  { name: 'Smelter',  cost: { plate: 10 }, workers: 1, unlock: 0, hp: 50, period: 2.0, desc: 'Iron ore + coal → plate.' },
+    workshop: { name: 'Workshop', cost: { plate: 15, wood: 10 }, workers: 2, unlock: 10, hp: 50, period: 3.0, desc: '2 plates → tools.' },
+    armory:   { name: 'Armory',   cost: { plate: 12 }, workers: 1, unlock: 0, hp: 50, period: 2.0, desc: '1 plate → 4 ammo.' },
+    depot:    { name: 'Depot',    cost: { wood: 8 },  workers: 0, unlock: 0, hp: 60, desc: 'Drop-off into the town stock. Must be inside the town.' },
+    hut:      { name: 'House',    cost: { wood: 6 },  workers: 0, unlock: 0, hp: 150, desc: 'Homes for workers. Must be inside the town.' },
+    turret:   { name: 'Turret',   cost: { plate: 12 }, workers: 0, unlock: 0, hp: 80, range: 5, rate: 2, dmg: 5, desc: 'Shoots raiders. Uses ammo from the town stock.' },
+    wall:     { name: 'Wall',     cost: { wood: 2 },  workers: 0, unlock: 0, hp: 120, desc: 'Cheap blocker. Raiders have to chew through it.' },
   },
 
-  enemies: {
-    crawler: { hp: 10, speed: 0.45, dps: 3,  r: 0.22, food: 0.35, fuel: 2 },
-    swarmer: { hp: 5,  speed: 0.9,  dps: 1.5, r: 0.15, food: 0.15, fuel: 1 },
-    brute:   { hp: 60, speed: 0.25, dps: 6,  r: 0.36, food: 2,    fuel: 6 },
-  },
-
-  // Each night: how long the spawning lasts (s), a health multiplier, and who comes.
-  nights: [
-    { spawnTime: 30, hpMult: 1.0,  groups: { crawler: 8 } },
-    { spawnTime: 35, hpMult: 1.1,  groups: { crawler: 12, swarmer: 6 } },
-    { spawnTime: 40, hpMult: 1.2,  groups: { crawler: 14, swarmer: 10, brute: 2 } },
-    { spawnTime: 45, hpMult: 1.4,  groups: { crawler: 20, swarmer: 16, brute: 5 } },
-    { spawnTime: 50, hpMult: 1.6,  groups: { crawler: 28, swarmer: 24, brute: 9 } },
+  // House tiers. Needs are per house per minute, drawn from the town stock.
+  tiers: [
+    { name: 'Hut',   residents: 2, needs: { food: 3 } },
+    { name: 'House', residents: 4, needs: { food: 4, wood: 3 } },
+    { name: 'Manor', residents: 8, needs: { food: 6, wood: 3, tools: 2 } },
   ],
+  upgradeAfter: 3, // town ticks fully supplied before moving up a tier
+  downgradeAfter: 2, // town ticks short before moving down
+
+  founders: 3, // people who live in the town hall and never leave, so a colony can always restart
+  townRadiusBase: 6,
+  townRadiusPerPop: 0.18,
+
+  raids: {
+    first: 360, // seconds until the first raid
+    every: 210,
+    warn: 30,
+    distance: 26, // how far from the town hall raiders appear
+    // Raid size grows with time and population
+    size: (t, pop) => 1 + Math.floor(t / 300) + Math.floor(pop / 15),
+    bruteFrom: 900,
+  },
+  enemies: {
+    crawler: { hp: 14, speed: 0.8, dps: 4,  r: 0.3, color: '#9b5de5' },
+    brute:   { hp: 60, speed: 0.5, dps: 10, r: 0.45, color: '#e05252' },
+  },
+  raidFoodSteal: 6,
 };
 
 DF.DIRS = {
