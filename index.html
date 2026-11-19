@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0d0b14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Duskforge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one screen, portrait. HUD on top, square-celled board in the middle, build bar at the thumb. */
+:root {
+  --bg: #0d0b14;
+  --panel: #17141f;
+  --panel-hi: #221d2d;
+  --line: #2e2839;
+  --fg: #e8e4ef;
+  --muted: #9a92a8;
+  --ember: #f0a64b;
+  --night: #6f7bf7;
+  --danger: #ff5d5d;
+  --good: #7bd389;
+  --ammo: #ffd25e;
+  --plate: #c9d3dd;
+  --font-display: "Chakra Petch", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 14px;
+  overflow: hidden;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  max-width: 560px;
+  margin: 0 auto;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: max(8px, env(safe-area-inset-left, 0px));
+  padding-right: max(8px, env(safe-area-inset-right, 0px));
+}
+
+/* HUD */
+header { display: grid; gap: 6px; padding-block: 8px 6px; }
+.top { display: flex; align-items: center; gap: 10px; }
+#phase {
+  font-family: var(--font-display); font-weight: 700; font-size: 20px; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--ember);
+}
+#phase.night { color: var(--night); }
+#timer { font-family: var(--font-display); font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 4.5em; }
+.wall { flex: 1; position: relative; height: 22px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+#wallFill { position: absolute; inset: 0 auto 0 0; background: #6d6578; transition: width 0.2s; }
+#wallFill.low { background: var(--danger); }
+#wallText { position: relative; display: block; text-align: center; line-height: 20px; font-family: var(--font-display); font-weight: 600; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+.res { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.chip {
+  display: flex; align-items: center; gap: 6px; padding: 4px 8px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+}
+.chip.low { border-color: var(--danger); }
+.chip { min-width: 0; }
+@media (max-width: 380px) { .chip span { display: none; } .chip { justify-content: center; } }
+.chip .ico { width: 10px; height: 10px; flex: none; }
+.chip b { font-family: var(--font-display); font-size: 16px; font-variant-numeric: tabular-nums; }
+.chip span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-left: auto; }
+.i-plate { background: var(--plate); }
+.i-ammo { background: var(--ammo); border-radius: 5px; width: 6px !important; height: 12px !important; }
+.i-fuel { background: var(--ember); clip-path: polygon(50% 0, 100% 70%, 50% 100%, 0 70%); }
+.i-food { background: var(--good); border-radius: 50%; }
+
+/* Board */
+main { flex: 1; min-height: 0; position: relative; }
+#board { position: absolute; inset: 0; touch-action: none; display: block; }
+#toast {
+  position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+  max-width: 90%; padding: 8px 12px; border-radius: 4px;
+  background: rgba(23, 20, 31, 0.95); border: 1px solid var(--danger); color: var(--fg);
+  font-size: 13px; text-align: center; pointer-events: none;
+}
+
+/* Build bar */
+footer { display: grid; gap: 6px; padding-block: 6px 8px; }
+#hint { font-size: 12.5px; line-height: 1.35; color: var(--muted); min-height: 2.7em; padding-inline: 2px; }
+.tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tools button, #action {
+  font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px; min-height: 44px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+}
+.tools button .n { font-family: var(--font-display); font-weight: 600; font-size: 13px; letter-spacing: 0.02em; }
+.tools button .c { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tools button.on { background: var(--panel-hi); border-color: var(--ember); box-shadow: inset 0 0 0 1px var(--ember); }
+.tools button.poor .c { color: var(--danger); }
+.tools button.locked { opacity: 0.4; }
+.tools button:disabled { opacity: 0.35; }
+.tools .arrow { font-size: 20px; line-height: 1; color: var(--ember); }
+#action {
+  min-height: 52px; flex-direction: row; font-family: var(--font-display); font-weight: 700; font-size: 17px;
+  letter-spacing: 0.08em; text-transform: uppercase; background: var(--ember); color: #1a1008; border-color: var(--ember);
+}
+#action.night { background: var(--panel-hi); color: var(--night); border-color: var(--night); }
+button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+/* Overlay */
+#overlay {
+  position: fixed; inset: 0; z-index: 5; display: grid; place-items: center;
+  background: rgba(8, 6, 14, 0.82); padding: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.card {
+  width: 100%; max-width: 400px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 22px 20px 18px; display: grid; gap: 12px; max-height: 92vh; overflow-y: auto;
+}
+#ovKicker { font-family: var(--font-display); font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ember); }
+#ovTitle { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 30px; line-height: 1.05; text-wrap: balance; }
+#ovBody p { margin: 0 0 8px; line-height: 1.5; color: #cfc9d9; }
+#ovBody .how { margin: 0; padding-left: 20px; display: grid; gap: 8px; line-height: 1.45; color: #cfc9d9; }
+#ovBody b { color: var(--fg); font-weight: 600; }
+#ovBody dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; }
+#ovBody dt { color: var(--muted); }
+#ovBody dd { margin: 0; font-family: var(--font-display); font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+#ovBody .note { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--fg); }
+#ovButton {
+  font-family: var(--font-display); font-weight: 700; font-size: 17px; letter-spacing: 0.08em; text-transform: uppercase;
+  background: var(--ember); color: #1a1008; border: 0; border-radius: 6px; min-height: 50px; cursor: pointer;
+}
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { #wallFill { transition: none; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="top">
+      <div id="phase">Day 1</div>
+      <div id="timer">75s</div>
+      <div class="wall"><div id="wallFill"></div><span id="wallText">Wall 120</span></div>
+    </div>
+    <div class="res">
+      <div class="chip" id="platesChip"><i class="ico i-plate"></i><b id="plates">0</b><span>Plate</span></div>
+      <div class="chip" id="ammoChip"><i class="ico i-ammo"></i><b id="ammo">0</b><span>Ammo</span></div>
+      <div class="chip" id="fuelChip"><i class="ico i-fuel"></i><b id="fuel">0</b><span>Fuel</span></div>
+      <div class="chip" id="foodChip"><i class="ico i-food"></i><b id="food">0</b><span>Food</span></div>
+    </div>
+  </header>
+
+  <main>
+    <canvas id="board"></canvas>
+    <div id="toast" hidden></div>
+  </main>
+
+  <footer>
+    <div id="hint"></div>
+    <div class="tools">
+      <button id="t-mine" data-tool="mine"><span class="n">Mine</span><span class="c">6</span></button>
+      <button id="t-smelter" data-tool="smelter"><span class="n">Smelter</span><span class="c">8</span></button>
+      <button id="t-workshop" data-tool="workshop"><span class="n">Workshop</span><span class="c">10</span></button>
+      <button id="t-belt" data-tool="belt"><span class="n">Belt</span><span class="c">1 · drag</span></button>
+      <button id="t-gun" data-tool="gun"><span class="n">Gun</span><span class="c">8</span></button>
+      <button id="t-mortar" data-tool="mortar"><span class="n">Mortar</span><span class="c">20</span></button>
+      <button id="t-remove" data-tool="remove"><span class="n">Remove</span><span class="c">refund</span></button>
+      <button id="rotate"><span class="arrow">↑</span><span class="c">facing</span></button>
+    </div>
+    <button id="action">Start night</button>
+  </footer>
+</div>
+
+<div id="overlay" hidden>
+  <div class="card">
+    <div id="ovKicker"></div>
+    <h1 id="ovTitle"></h1>
+    <div id="ovBody"></div>
+    <button id="ovButton"></button>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/state.js"></script>
+<script src="js/factory.js"></script>
+<script src="js/combat.js"></script>
+<script src="js/render.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
